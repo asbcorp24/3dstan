@@ -4,23 +4,31 @@ body { background: #eef1f4; font-family: Inter, system-ui, -apple-system, BlinkM
 .topbar { height: 52px; min-height: 52px; background: #17212b; box-shadow: 0 2px 8px rgba(0,0,0,.18); z-index: 10; }
 .brand { font-weight: 700; letter-spacing: .4px; color: #fff; font-size: 18px; }
 .layout-name { width: 220px; }
-.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px 1fr 320px; }
+.workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: 290px 1fr 330px; }
 .panel { background: #fff; min-height: 0; overflow: auto; z-index: 3; }
 .left-panel { border-right: 1px solid #d6dbe1; }
 .right-panel { border-left: 1px solid #d6dbe1; }
 .panel-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: 10px 12px; background: #f7f8fa; color: #495057; }
 .viewport-wrap { position: relative; min-width: 0; min-height: 0; background: #dfe5ea; }
 #threeCanvas { display: block; width: 100%; height: 100%; }
-.viewport-help { position: absolute; left: 12px; bottom: 12px; background: rgba(18, 25, 31, .72); color: #fff; padding: 6px 9px; border-radius: 6px; font-size: 12px; pointer-events: none; }
+.viewport-help { position: absolute; left: 12px; bottom: 12px; background: rgba(18,25,31,.76); color: #fff; padding: 6px 9px; border-radius: 6px; font-size: 12px; pointer-events: none; }
 .selection-badge { position: absolute; top: 12px; left: 12px; background: rgba(13,110,253,.92); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 12px; pointer-events: none; }
+.grid-selection-badge { position: absolute; top: 12px; right: 12px; background: rgba(25,135,84,.94); color:#fff; border-radius:6px; padding:7px 10px; font-size:12px; pointer-events:none; }
 .equipment-category { margin-bottom: 8px; }
 .equipment-category-title { font-size: 12px; font-weight: 700; color: #6c757d; padding: 6px 4px; }
-.equipment-item, .scene-item { display: flex; align-items: center; gap: 8px; border: 1px solid #e2e6ea; border-radius: 7px; margin-bottom: 6px; padding: 8px; cursor: pointer; background: #fff; }
-.equipment-item:hover, .scene-item:hover { border-color: #86b7fe; background: #f7fbff; }
-.equipment-swatch { width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; }
-.equipment-meta { color: #7b8490; font-size: 11px; }
-.scene-item.active { border-color: #0d6efd; background: #eaf2ff; }
-.property-label { font-size: 11px; color: #6c757d; margin-bottom: 3px; }
-.property-section { border-top: 1px solid #edf0f2; padding-top: 8px; margin-top: 8px; }
-.param-row { display: grid; grid-template-columns: 1fr 1.1fr; gap: 6px; align-items: center; margin-bottom: 6px; }
-@media (max-width: 1100px) { .workspace { grid-template-columns: 220px 1fr 260px; } }
+.equipment-item, .scene-item { display:flex; align-items:center; gap:8px; border:1px solid #e2e6ea; border-radius:7px; margin-bottom:6px; padding:8px; cursor:pointer; background:#fff; }
+.equipment-item:hover, .scene-item:hover { border-color:#86b7fe; background:#f7fbff; }
+.equipment-swatch { width:13px; height:13px; border-radius:3px; flex:0 0 auto; }
+.equipment-meta { color:#7b8490; font-size:11px; }
+.scene-item.active { border-color:#0d6efd; background:#eaf2ff; }
+.property-label { font-size:11px; color:#6c757d; margin-bottom:3px; }
+.property-section { border-top:1px solid #edf0f2; padding-top:9px; margin-top:9px; }
+.param-row { display:grid; grid-template-columns:1fr 1.1fr; gap:6px; align-items:center; margin-bottom:6px; }
+.passport-title { font-size:12px; font-weight:700; text-transform:uppercase; color:#495057; margin:10px 0 6px; }
+.passport-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.passport-grid .wide { grid-column:1 / -1; }
+.status-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+.building-tools-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.grid-wall-help { line-height:1.3; background:#f5f8fb; border:1px solid #e3e9ef; border-radius:6px; padding:7px; }
+.dimension-value { font-weight:700; }
+@media (max-width: 1200px) { .workspace { grid-template-columns:250px 1fr 285px; } }
