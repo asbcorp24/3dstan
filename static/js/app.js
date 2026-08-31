@@ -6,46 +6,30 @@ const canvas = document.getElementById('threeCanvas');
 const viewport = document.getElementById('viewportWrap');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xe7ebef);
-
 const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 1000);
 camera.position.set(18, 18, 18);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 0);
 controls.enableDamping = true;
-controls.dampingFactor = 0.08;
 controls.screenSpacePanning = true;
 controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
 controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
 controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
-controls.update();
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x718096, 1.8));
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-sun.position.set(12, 25, 10);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-scene.add(sun);
+sun.position.set(12, 25, 10); sun.castShadow = true; scene.add(sun);
 
 const GRID_SIZE = 60;
 const GRID_STEP = 0.5;
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(GRID_SIZE, GRID_SIZE), new THREE.MeshStandardMaterial({ color: 0xf8f9fa, roughness: 1 }));
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-floor.userData.ignorePick = true;
-scene.add(floor);
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; floor.userData.ignorePick = true; scene.add(floor);
 const grid = new THREE.GridHelper(GRID_SIZE, GRID_SIZE / GRID_STEP, 0x8f9aa6, 0xc7cdd3);
-grid.position.y = 0.003;
-grid.userData.ignorePick = true;
-scene.add(grid);
-const axes = new THREE.AxesHelper(2);
-axes.position.y = 0.02;
-axes.userData.ignorePick = true;
-scene.add(axes);
+grid.position.y = .003; grid.userData.ignorePick = true; scene.add(grid);
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -53,346 +37,85 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const stlLoader = new STLLoader();
 
 const STATUS_COLORS = {
-  'Работает': null,
-  'Отключён': '#7b8794',
-  'Простой': '#d5a928',
-  'Обслуживание': '#e67e22',
-  'Ремонт': '#c95d20',
-  'Авария': '#d93636',
+  'Работает': '#2e9b55', 'Отключён': '#7b8794', 'Простой': '#d5a928',
+  'Обслуживание': '#e67e22', 'Ремонт': '#c95d20', 'Авария': '#d93636',
+};
+const PASSPORT_FIELDS = [
+  ['модель','Модель','text'], ['завод_изготовитель','Завод-изготовитель','text'], ['заводской_номер','Заводской номер','text'],
+  ['инвентарный_номер','Инвентарный номер','text'], ['год_выпуска','Год выпуска','number'], ['масса_кг','Масса, кг','number'],
+  ['мощность_кВт','Мощность, кВт','number'], ['напряжение','Напряжение','text'], ['максимальный_ток_А','Максимальный ток, А','number'],
+  ['цех','Цех','text'], ['участок','Участок','text'], ['линия','Линия','text'], ['ответственный','Ответственный','text'],
+  ['дата_установки','Дата установки','date'], ['последнее_ТО','Дата последнего ТО','date'], ['следующее_ТО','Следующее ТО','date'],
+];
+const BUILDING_PRESETS = {
+  door:{name:'Дверь',kind:'door',width:1.2,depth:.12,height:2.1,color:0xc6905d},
+  gate:{name:'Ворота',kind:'gate',width:3.5,depth:.18,height:3.2,color:0x607d8b},
+  window:{name:'Окно',kind:'window',width:1.5,depth:.08,height:1.2,y:1.1,color:0x77b9d6,opacity:.55},
+  column:{name:'Колонна',kind:'column',width:.5,depth:.5,height:3.5,color:0x9aa1a8},
+  stairs:{name:'Лестница',kind:'stairs',width:2,depth:3,height:1.5,color:0x8d99a6},
+  passage:{name:'Проход',kind:'passage',width:2,depth:4,height:.03,color:0x55a7ff,opacity:.35},
+  zone:{name:'Зона',kind:'zone',width:4,depth:4,height:.03,color:0x4fa86b,opacity:.3},
+  techZone:{name:'Технологический участок',kind:'techZone',width:5,depth:5,height:.03,color:0x5b78c7,opacity:.3},
+  dangerZone:{name:'Опасная зона',kind:'dangerZone',width:4,depth:4,height:.03,color:0xe05252,opacity:.32},
+  exit:{name:'Эвакуационный выход',kind:'exit',width:1.4,depth:.12,height:2.2,color:0x20a15a},
 };
 
-let equipmentTypes = [];
-let objects = [];
-let selected = null;
-let activeTool = 'select';
-let dragging = false;
-let dragOffset = new THREE.Vector3();
-let wallStart = null;
-let objectCounter = 1;
+let equipmentTypes=[], objects=[], selected=null, activeTool='select', dragging=false, wallStart=null;
+let dragOffset=new THREE.Vector3(), objectCounter=1, cellDragStart=null, cellDragEnd=null, cellPreview=[];
+const uid=(p='obj')=>`${p}-${Date.now()}-${objectCounter++}`;
+const escapeHtml=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]));
+const snap=v=>Math.round(v/GRID_STEP)*GRID_STEP;
+const gridOnly=()=>document.getElementById('gridOnlyCheck')?.checked!==false;
+const snapIf=v=>gridOnly()?snap(v):v;
+const setStatus=t=>document.getElementById('statusText').textContent=t;
 
-const uid = (prefix = 'obj') => `${prefix}-${Date.now()}-${objectCounter++}`;
-const snap = value => Math.round(value / GRID_STEP) * GRID_STEP;
-const setStatus = text => { document.getElementById('statusText').textContent = text; };
-const escapeHtml = value => String(value).replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#039;', '"':'&quot;' }[c]));
-const escapeAttr = escapeHtml;
-const kindTitle = kind => ({ equipment: 'Оборудование', wall: 'Стена', door: 'Дверь' })[kind] || kind;
+function pointerNdc(e){const r=renderer.domElement.getBoundingClientRect();pointer.x=((e.clientX-r.left)/r.width)*2-1;pointer.y=-((e.clientY-r.top)/r.height)*2+1;raycaster.setFromCamera(pointer,camera);}
+function pointerOnFloor(e){pointerNdc(e);const p=new THREE.Vector3();return raycaster.ray.intersectPlane(groundPlane,p)?p:null;}
+function rootFromHit(o){let c=o;while(c&&!c.userData.sceneObject&&c.parent)c=c.parent;return c?.userData?.sceneObject?c:null;}
+function pickObject(e){pointerNdc(e);for(const h of raycaster.intersectObjects(objects,true)){const r=rootFromHit(h.object);if(r)return r;}return null;}
 
-function pointerNdc(event) {
-  const rect = renderer.domElement.getBoundingClientRect();
-  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-}
+function makeLabelSprite(text){const c=document.createElement('canvas');c.width=512;c.height=96;const x=c.getContext('2d');x.fillStyle='rgba(20,27,35,.88)';x.roundRect(4,4,504,88,16);x.fill();x.fillStyle='#fff';x.font='bold 30px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(text,256,48);const t=new THREE.CanvasTexture(c),s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false}));s.scale.set(3.5,.66,1);s.userData.label=true;return s;}
+function refreshLabel(o){const old=o.children.find(c=>c.userData.label);if(old){old.material.map?.dispose();old.material.dispose();o.remove(old);}if(!o.userData.name)return;const s=makeLabelSprite(o.userData.name);s.position.set(0,(o.userData.height||1)+.45,0);o.add(s);}
+function makePlaceholder(o){const d=o.userData,m=new THREE.Mesh(new THREE.BoxGeometry(d.width,d.height,d.depth),new THREE.MeshStandardMaterial({color:d.baseColor,roughness:.72,metalness:.08,transparent:!!d.modelUrl,opacity:d.modelUrl?.22:1}));m.position.y=d.height/2;m.castShadow=true;m.receiveShadow=true;m.userData.body=true;m.userData.placeholder=true;o.add(m);}
+function fitStlMesh(m,o){const g=m.geometry;g.computeBoundingBox();const b=g.boundingBox;if(!b)return;const s=new THREE.Vector3();b.getSize(s);const c=new THREE.Vector3();b.getCenter(c);g.translate(-c.x,-b.min.y,-c.z);m.scale.set(o.userData.width/Math.max(s.x,1e-9),o.userData.height/Math.max(s.y,1e-9),o.userData.depth/Math.max(s.z,1e-9));}
+function loadStlIntoEquipment(o){if(!o.userData.modelUrl)return;stlLoader.load(o.userData.modelUrl,g=>{if(!o.parent){g.dispose();return;}o.children.filter(c=>c.userData.placeholder).forEach(c=>{c.geometry.dispose();c.material.dispose();o.remove(c);});g.computeVertexNormals();const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:o.userData.baseColor,roughness:.62,metalness:.18}));m.castShadow=true;m.receiveShadow=true;m.userData.body=true;m.userData.stl=true;o.add(m);fitStlMesh(m,o);applyStatusAppearance(o);refreshLabel(o);setStatus(`STL загружен: ${o.userData.name}`);},undefined,()=>setStatus(`Ошибка STL: ${o.userData.name}`));}
+function applyStatusAppearance(o){if(o.userData.kind!=='equipment')return;const c=STATUS_COLORS[o.userData.params?.состояние||'Работает']||o.userData.baseColor;o.traverse(ch=>{if(ch.isMesh&&ch.userData.body&&ch.material?.color)ch.material.color.set(c);});}
 
-function pointerOnFloor(event) {
-  pointerNdc(event);
-  const p = new THREE.Vector3();
-  return raycaster.ray.intersectPlane(groundPlane, p) ? p : null;
-}
+function addEquipment(type,pos=new THREE.Vector3(),data=null){const o=new THREE.Group();o.position.set(snapIf(pos.x),data?.position?.y??data?.y??0,snapIf(pos.z));o.rotation.y=data?.rotationY??0;o.userData={sceneObject:true,kind:'equipment',uuid:data?.uuid??uid('eq'),typeId:data?.typeId??type.id,name:data?.name??type.name,width:data?.width??type.width,depth:data?.depth??type.depth,height:data?.height??type.height,baseColor:data?.baseColor??data?.color??type.color,color:data?.color??type.color,params:structuredClone(data?.params??type.default_params??{}),modelUrl:data?.modelUrl??type.model_url??null,modelFilename:data?.modelFilename??type.model_filename??null,modelUnit:data?.modelUnit??type.model_unit??'mm'};if(!o.userData.params.состояние)o.userData.params.состояние='Работает';makePlaceholder(o);refreshLabel(o);scene.add(o);objects.push(o);applyStatusAppearance(o);selectObject(o);refreshSceneTree();loadStlIntoEquipment(o);return o;}
+function wallSettings(){return{height:Math.max(.1,Number(document.getElementById('wallHeight')?.value)||3),thickness:Math.max(.05,Number(document.getElementById('wallThickness')?.value)||.18)};}
+function addWall(start,end,data=null){const sx=data?.start?.x??snapIf(start.x),sz=data?.start?.z??snapIf(start.z),ex=data?.end?.x??snapIf(end.x),ez=data?.end?.z??snapIf(end.z),dx=ex-sx,dz=ez-sz,len=Math.hypot(dx,dz);if(len<.01)return null;const cfg=wallSettings(),height=data?.height??cfg.height,thickness=data?.thickness??cfg.thickness,o=new THREE.Group();o.position.set((sx+ex)/2,0,(sz+ez)/2);o.rotation.y=-Math.atan2(dz,dx);o.userData={sceneObject:true,kind:'wall',uuid:data?.uuid??uid('wall'),name:data?.name??'Стена',start:{x:sx,z:sz},end:{x:ex,z:ez},height,thickness,width:len,depth:thickness,cellWall:data?.cellWall??false,cells:data?.cells};const m=new THREE.Mesh(new THREE.BoxGeometry(len,height,thickness),new THREE.MeshStandardMaterial({color:0xc7ccd1,roughness:.92}));m.position.y=height/2;m.castShadow=true;m.receiveShadow=true;o.add(m);scene.add(o);objects.push(o);selectObject(o);refreshSceneTree();return o;}
+function addBuilding(key,pos,data=null){const p=BUILDING_PRESETS[key]||BUILDING_PRESETS.column,o=new THREE.Group(),kind=data?.kind??p.kind;o.position.set(snapIf(pos.x),data?.position?.y??data?.y??0,snapIf(pos.z));o.rotation.y=data?.rotationY??0;const d=o.userData={sceneObject:true,kind,uuid:data?.uuid??uid(kind),name:data?.name??p.name,width:data?.width??p.width,depth:data?.depth??p.depth,height:data?.height??p.height,color:data?.color??p.color,opacity:data?.opacity??p.opacity??1};const g=kind==='column'?new THREE.CylinderGeometry(d.width/2,d.width/2,d.height,20):new THREE.BoxGeometry(d.width,d.height,d.depth),m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:d.color,transparent:d.opacity<1,opacity:d.opacity,roughness:.8}));m.position.y=(p.y??0)+d.height/2;m.castShadow=d.height>.1;m.receiveShadow=true;o.add(m);scene.add(o);objects.push(o);selectObject(o);refreshSceneTree();return o;}
 
-function rootFromHit(object) {
-  let current = object;
-  while (current && !current.userData.sceneObject && current.parent) current = current.parent;
-  return current?.userData?.sceneObject ? current : null;
-}
+function clearCellPreview(){cellPreview.forEach(m=>{scene.remove(m);m.geometry.dispose();m.material.dispose();});cellPreview=[];document.getElementById('gridSelectionBadge')?.classList.add('d-none');}
+const cellIndex=p=>({x:Math.floor(p.x/GRID_STEP),z:Math.floor(p.z/GRID_STEP)}), cellCenter=i=>(i+.5)*GRID_STEP;
+function updateCellPreview(a,b){clearCellPreview();if(!a||!b)return;const horizontal=Math.abs(b.x-a.x)>=Math.abs(b.z-a.z),end=horizontal?{x:b.x,z:a.z}:{x:a.x,z:b.z},min=horizontal?Math.min(a.x,end.x):Math.min(a.z,end.z),max=horizontal?Math.max(a.x,end.x):Math.max(a.z,end.z);for(let i=min;i<=max;i++){const x=horizontal?cellCenter(i):cellCenter(a.x),z=horizontal?cellCenter(a.z):cellCenter(i),m=new THREE.Mesh(new THREE.PlaneGeometry(GRID_STEP*.94,GRID_STEP*.94),new THREE.MeshBasicMaterial({color:0x2f80ed,transparent:true,opacity:.42,side:THREE.DoubleSide}));m.rotation.x=-Math.PI/2;m.position.set(x,.012,z);scene.add(m);cellPreview.push(m);}cellDragEnd=end;const badge=document.getElementById('gridSelectionBadge');badge.textContent=`Выбрано ячеек: ${max-min+1} · ${(max-min+1)*GRID_STEP} м`;badge.classList.remove('d-none');}
+function createWallFromCells(){if(!cellDragStart||!cellDragEnd)return;const a=cellDragStart,b=cellDragEnd,h=a.z===b.z,count=(h?Math.abs(b.x-a.x):Math.abs(b.z-a.z))+1,len=count*GRID_STEP,cx=h?(cellCenter(Math.min(a.x,b.x))+len/2-GRID_STEP/2):cellCenter(a.x),cz=h?cellCenter(a.z):(cellCenter(Math.min(a.z,b.z))+len/2-GRID_STEP/2),cfg=wallSettings(),o=new THREE.Group();o.position.set(cx,0,cz);o.rotation.y=h?0:-Math.PI/2;o.userData={sceneObject:true,kind:'wall',uuid:uid('wall'),name:'Стена по ячейкам',start:{x:h?cx-len/2:cx,z:h?cz:cz-len/2},end:{x:h?cx+len/2:cx,z:h?cz:cz+len/2},height:cfg.height,thickness:gridOnly()?GRID_STEP:cfg.thickness,width:len,depth:gridOnly()?GRID_STEP:cfg.thickness,cellWall:true,cells:count};const m=new THREE.Mesh(new THREE.BoxGeometry(len,cfg.height,o.userData.thickness),new THREE.MeshStandardMaterial({color:0xbfc5cb,roughness:.92}));m.position.y=cfg.height/2;m.castShadow=true;m.receiveShadow=true;o.add(m);scene.add(o);objects.push(o);selectObject(o);refreshSceneTree();setStatus(`Стена поднята из ${count} ячеек`);clearCellPreview();cellDragStart=null;cellDragEnd=null;}
 
-function pickObject(event) {
-  pointerNdc(event);
-  for (const hit of raycaster.intersectObjects(objects, true)) {
-    const root = rootFromHit(hit.object);
-    if (root) return root;
-  }
-  return null;
-}
+function setHighlight(o,on){o.traverse(ch=>{if(ch.isMesh&&ch.material?.emissive){ch.material.emissive.set(on?0x1c4e80:0);ch.material.emissiveIntensity=on?.23:0;}});}
+function selectObject(o){if(selected===o)return;if(selected)setHighlight(selected,false);selected=o;if(selected)setHighlight(selected,true);renderProperties();refreshSceneTree();const b=document.getElementById('selectionBadge');if(selected){b.textContent=selected.userData.name;b.classList.remove('d-none');}else b.classList.add('d-none');}
+function disposeObject(o){o.traverse(ch=>{ch.geometry?.dispose?.();if(ch.material){ch.material.map?.dispose?.();ch.material.dispose?.();}});}
+function removeSelected(){if(!selected)return;const v=selected;selected=null;scene.remove(v);objects=objects.filter(o=>o!==v);disposeObject(v);renderProperties();refreshSceneTree();}
+function rebuildEquipmentGeometry(o){const stl=o.children.find(c=>c.userData.stl);if(stl)fitStlMesh(stl,o);const ph=o.children.find(c=>c.userData.placeholder);if(ph){ph.geometry.dispose();ph.geometry=new THREE.BoxGeometry(o.userData.width,o.userData.height,o.userData.depth);ph.position.y=o.userData.height/2;}refreshLabel(o);}
+function passportHtml(d){return `<div class="passport-title">Паспорт станка</div><div class="passport-grid">${PASSPORT_FIELDS.map(([k,l,t])=>`<div class="${k==='ответственный'?'wide':''}"><label class="property-label">${l}</label><input class="form-control form-control-sm passport-input" data-key="${k}" type="${t}" value="${escapeHtml(d.params?.[k]??'')}"></div>`).join('')}</div>`;}
+function renderProperties(){const p=document.getElementById('propertiesPanel');if(!selected){p.innerHTML='<span class="text-secondary">Выберите объект на сцене.</span>';return;}const d=selected.userData;let html=`<div class="mb-2"><div class="property-label">Тип</div><strong>${escapeHtml(d.kind)}</strong></div><div class="mb-2"><label class="property-label">Наименование</label><input id="propName" class="form-control form-control-sm" value="${escapeHtml(d.name)}"></div><div class="row g-1"><div class="col-4"><label class="property-label">X, м</label><input id="propX" type="number" step=".001" class="form-control form-control-sm" value="${selected.position.x.toFixed(3)}"></div><div class="col-4"><label class="property-label">Y, м</label><input id="propY" type="number" step=".001" class="form-control form-control-sm" value="${selected.position.y.toFixed(3)}"></div><div class="col-4"><label class="property-label">Z, м</label><input id="propZ" type="number" step=".001" class="form-control form-control-sm" value="${selected.position.z.toFixed(3)}"></div></div><div class="mt-1"><label class="property-label">Поворот, °</label><input id="propRotation" type="number" step="1" class="form-control form-control-sm" value="${THREE.MathUtils.radToDeg(selected.rotation.y).toFixed(1)}"></div>`;if(d.kind==='equipment'){html+=`<div class="property-section"><label class="property-label">Состояние</label><select id="propStatus" class="form-select form-select-sm">${Object.keys(STATUS_COLORS).map(s=>`<option ${s===(d.params?.состояние||'Работает')?'selected':''}>${s}</option>`).join('')}</select></div><div class="property-section"><div class="row g-1"><div class="col"><label class="property-label">Размер X</label><input id="propWidth" type="number" step=".001" class="form-control form-control-sm" value="${d.width}"></div><div class="col"><label class="property-label">Размер Y</label><input id="propHeight" type="number" step=".001" class="form-control form-control-sm" value="${d.height}"></div><div class="col"><label class="property-label">Размер Z</label><input id="propDepth" type="number" step=".001" class="form-control form-control-sm" value="${d.depth}"></div></div></div>${passportHtml(d)}${d.modelUrl?`<div class="property-section small"><strong>3D-модель:</strong> ${escapeHtml(d.modelFilename||'STL')} (${escapeHtml(d.modelUnit)})</div>`:''}`;}else if(d.kind==='wall')html+=`<div class="property-section"><strong>Высота:</strong> ${d.height} м<br><strong>Толщина:</strong> ${d.thickness} м${d.cellWall?`<br><strong>Ячеек:</strong> ${d.cells}`:''}</div>`;p.innerHTML=html;bindPropertyEvents();}
+function bindPropertyEvents(){if(!selected)return;const id=x=>document.getElementById(x);id('propName')?.addEventListener('input',e=>{selected.userData.name=e.target.value;refreshLabel(selected);refreshSceneTree();});const tr=()=>{selected.position.x=snapIf(Number(id('propX')?.value)||0);selected.position.y=Number(id('propY')?.value)||0;selected.position.z=snapIf(Number(id('propZ')?.value)||0);selected.rotation.y=THREE.MathUtils.degToRad(Number(id('propRotation')?.value)||0);};['propX','propY','propZ','propRotation'].forEach(x=>id(x)?.addEventListener('change',tr));if(selected.userData.kind==='equipment'){id('propStatus')?.addEventListener('change',e=>{selected.userData.params.состояние=e.target.value;applyStatusAppearance(selected);refreshSceneTree();});document.querySelectorAll('.passport-input').forEach(el=>el.addEventListener('change',e=>selected.userData.params[e.target.dataset.key]=e.target.value));const rb=()=>{selected.userData.width=Math.max(.001,Number(id('propWidth').value)||1);selected.userData.height=Math.max(.001,Number(id('propHeight').value)||1);selected.userData.depth=Math.max(.001,Number(id('propDepth').value)||1);rebuildEquipmentGeometry(selected);};['propWidth','propHeight','propDepth'].forEach(x=>id(x)?.addEventListener('change',rb));}}
+function refreshSceneTree(){const el=document.getElementById('sceneTree');if(!objects.length){el.innerHTML='<div class="small text-secondary">План пока пуст.</div>';return;}el.innerHTML=objects.map(o=>`<div class="scene-item ${o===selected?'active':''}" data-uuid="${o.userData.uuid}"><div><strong>${escapeHtml(o.userData.name)}</strong><div class="equipment-meta">${escapeHtml(o.userData.kind)}${o.userData.kind==='equipment'?` · ${escapeHtml(o.userData.params?.состояние||'Работает')}`:''}</div></div></div>`).join('');el.querySelectorAll('.scene-item').forEach(x=>x.addEventListener('click',()=>selectObject(objects.find(o=>o.userData.uuid===x.dataset.uuid)||null)));}
+function renderEquipmentTree(filter=''){const el=document.getElementById('equipmentTree'),q=filter.trim().toLowerCase(),filtered=equipmentTypes.filter(x=>!q||`${x.name} ${x.category} ${JSON.stringify(x.default_params)}`.toLowerCase().includes(q)),groups={};filtered.forEach(x=>(groups[x.category||'Прочее']??=[]).push(x));el.innerHTML=Object.entries(groups).map(([cat,items])=>`<div class="equipment-category"><div class="equipment-category-title">${escapeHtml(cat)}</div>${items.map(x=>`<div class="equipment-item" draggable="true" data-type-id="${x.id}"><span class="equipment-swatch" style="background:${x.color}"></span><div><strong>${escapeHtml(x.name)}</strong>${x.model_url?'<span class="badge text-bg-dark ms-1">STL</span>':''}<div class="equipment-meta">${x.width}×${x.depth}×${x.height} м</div></div></div>`).join('')}</div>`).join('')||'<div class="small text-secondary">Ничего не найдено.</div>';el.querySelectorAll('.equipment-item').forEach(i=>{i.addEventListener('click',()=>addEquipment(equipmentTypes.find(t=>t.id===Number(i.dataset.typeId)),controls.target.clone()));i.addEventListener('dragstart',e=>e.dataTransfer.setData('text/equipment-type',i.dataset.typeId));});}
+function setTool(tool){activeTool=tool;wallStart=null;cellDragStart=null;cellDragEnd=null;clearCellPreview();document.querySelectorAll('.tool-btn').forEach(b=>{const a=b.dataset.tool===tool;b.classList.toggle('active',a);b.classList.toggle('btn-outline-primary',a);b.classList.toggle('btn-outline-secondary',!a);});setStatus(tool==='cellWall'?'Стена по ячейкам: протяните полосу клеток':tool==='wall'?'Стена: укажите первую точку':tool==='select'?'Режим выбора':`Разместите: ${BUILDING_PRESETS[tool]?.name||tool}`);}
 
-function makeLabelSprite(text) {
-  const c = document.createElement('canvas');
-  c.width = 512; c.height = 96;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = 'rgba(20,27,35,.88)';
-  ctx.roundRect(4, 4, 504, 88, 16); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 32px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(text, 256, 48);
-  const texture = new THREE.CanvasTexture(c);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-  sprite.scale.set(3.6, .68, 1); sprite.userData.label = true;
-  return sprite;
-}
+renderer.domElement.addEventListener('pointerdown',e=>{if(e.button!==0)return;if(activeTool==='cellWall'){const p=pointerOnFloor(e);if(!p)return;cellDragStart=cellIndex(p);cellDragEnd=cellDragStart;updateCellPreview(cellDragStart,cellDragEnd);controls.enabled=false;renderer.domElement.setPointerCapture?.(e.pointerId);return;}if(activeTool==='wall'){const p=pointerOnFloor(e);if(!p)return;if(!wallStart){wallStart=p.clone();setStatus('Стена: укажите вторую точку');}else{addWall(wallStart,p);wallStart=p.clone();setStatus('Стена добавлена. Следующая точка продолжит контур');}return;}if(BUILDING_PRESETS[activeTool]){const p=pointerOnFloor(e);if(p)addBuilding(activeTool,p);setTool('select');return;}const hit=pickObject(e);selectObject(hit);if(hit){const p=pointerOnFloor(e);if(p){dragging=true;dragOffset.copy(hit.position).sub(p);controls.enabled=false;renderer.domElement.setPointerCapture?.(e.pointerId);}}});
+renderer.domElement.addEventListener('pointermove',e=>{if(activeTool==='cellWall'&&cellDragStart){const p=pointerOnFloor(e);if(p)updateCellPreview(cellDragStart,cellIndex(p));return;}if(!dragging||!selected||activeTool!=='select')return;const p=pointerOnFloor(e);if(!p)return;selected.position.x=snapIf(p.x+dragOffset.x);selected.position.z=snapIf(p.z+dragOffset.z);const px=document.getElementById('propX'),pz=document.getElementById('propZ');if(px)px.value=selected.position.x.toFixed(3);if(pz)pz.value=selected.position.z.toFixed(3);});
+window.addEventListener('pointerup',()=>{if(activeTool==='cellWall'&&cellDragStart)createWallFromCells();dragging=false;controls.enabled=true;});
+viewport.addEventListener('dragover',e=>e.preventDefault());viewport.addEventListener('drop',e=>{e.preventDefault();const t=equipmentTypes.find(x=>x.id===Number(e.dataTransfer.getData('text/equipment-type'))),p=pointerOnFloor(e);if(t&&p)addEquipment(t,p);});
 
-function refreshLabel(obj) {
-  const old = obj.children.find(c => c.userData.label);
-  if (old) { old.material.map?.dispose(); old.material.dispose(); obj.remove(old); }
-  if (!obj.userData.name) return;
-  const sprite = makeLabelSprite(obj.userData.name);
-  sprite.position.set(0, (obj.userData.height || 1) + .55, 0);
-  obj.add(sprite);
-}
+function serializeScene(){return{version:3,gridStep:GRID_STEP,camera:{position:camera.position.toArray(),target:controls.target.toArray()},objects:objects.map(o=>({...o.userData,position:{x:o.position.x,y:o.position.y,z:o.position.z},rotationY:o.rotation.y}))};}
+function clearSceneObjects(){selectObject(null);objects.forEach(o=>{scene.remove(o);disposeObject(o);});objects=[];refreshSceneTree();}
+function loadScene(data){clearSceneObjects();for(const item of data?.objects||[]){const pos=new THREE.Vector3(item.position?.x||0,item.position?.y||0,item.position?.z||0);if(item.kind==='equipment'){const t=equipmentTypes.find(x=>x.id===item.typeId)||{id:item.typeId,name:item.name,width:item.width,depth:item.depth,height:item.height,color:item.color||'#4472c4',default_params:item.params||{},model_url:item.modelUrl};addEquipment(t,pos,item);}else if(item.kind==='wall')addWall(new THREE.Vector3(item.start.x,0,item.start.z),new THREE.Vector3(item.end.x,0,item.end.z),item);else{const key=Object.keys(BUILDING_PRESETS).find(k=>BUILDING_PRESETS[k].kind===item.kind)||'column';addBuilding(key,pos,item);}}if(data?.camera?.position)camera.position.fromArray(data.camera.position);if(data?.camera?.target)controls.target.fromArray(data.camera.target);controls.update();selectObject(null);}
+async function saveLayout(){const name=document.getElementById('layoutName').value.trim()||'Основной цех';setStatus('Сохранение...');const r=await fetch('/api/layouts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,data:serializeScene()})});if(!r.ok)throw new Error('Не удалось сохранить');setStatus('Сохранено');refreshLayouts();}
+async function refreshLayouts(){const list=await fetch('/api/layouts').then(r=>r.json()),el=document.getElementById('layoutsList');el.innerHTML=list.length?list.map(l=>`<div class="list-group-item d-flex align-items-center gap-2"><div class="flex-grow-1"><strong>${escapeHtml(l.name)}</strong><div class="small text-secondary">${l.updated_at?new Date(l.updated_at).toLocaleString():''}</div></div><button class="btn btn-sm btn-primary load-layout" data-id="${l.id}">Открыть</button><button class="btn btn-sm btn-outline-danger delete-layout" data-id="${l.id}">Удалить</button></div>`).join(''):'<div class="text-secondary">Планировок нет.</div>';el.querySelectorAll('.load-layout').forEach(b=>b.addEventListener('click',async()=>{const l=await fetch(`/api/layouts/${b.dataset.id}`).then(r=>r.json());document.getElementById('layoutName').value=l.name;loadScene(l.data);bootstrap.Modal.getOrCreateInstance(document.getElementById('layoutsModal')).hide();}));el.querySelectorAll('.delete-layout').forEach(b=>b.addEventListener('click',async()=>{await fetch(`/api/layouts/${b.dataset.id}`,{method:'DELETE'});refreshLayouts();}));}
+function resize(){const w=viewport.clientWidth,h=viewport.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/Math.max(h,1);camera.updateProjectionMatrix();}new ResizeObserver(resize).observe(viewport);resize();(function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);})();
 
-function makePlaceholder(root) {
-  const d = root.userData;
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(d.width, d.height, d.depth),
-    new THREE.MeshStandardMaterial({ color: d.baseColor, roughness: .72, metalness: .08, transparent: !!d.modelUrl, opacity: d.modelUrl ? .25 : 1 })
-  );
-  body.position.y = d.height / 2;
-  body.castShadow = true; body.receiveShadow = true;
-  body.userData.body = true; body.userData.placeholder = true;
-  root.add(body);
-  if (!d.modelUrl) {
-    const top = new THREE.Mesh(
-      new THREE.BoxGeometry(d.width * .72, Math.max(.14, d.height * .08), d.depth * .72),
-      new THREE.MeshStandardMaterial({ color: 0x293541, roughness: .55 })
-    );
-    top.position.y = d.height + Math.max(.07, d.height * .04);
-    top.castShadow = true; top.userData.body = true;
-    root.add(top);
-  }
-}
-
-function fitStlMesh(mesh, root) {
-  const geometry = mesh.geometry;
-  geometry.computeBoundingBox();
-  const box = geometry.boundingBox;
-  if (!box) return;
-  const size = new THREE.Vector3(); box.getSize(size);
-  const center = new THREE.Vector3(); box.getCenter(center);
-  geometry.translate(-center.x, -box.min.y, -center.z);
-  mesh.scale.set(
-    root.userData.width / Math.max(size.x, 1e-9),
-    root.userData.height / Math.max(size.y, 1e-9),
-    root.userData.depth / Math.max(size.z, 1e-9)
-  );
-}
-
-function loadStlIntoEquipment(root) {
-  if (!root.userData.modelUrl) return;
-  root.userData.modelLoading = true;
-  setStatus(`Загрузка STL: ${root.userData.name}`);
-  stlLoader.load(root.userData.modelUrl, geometry => {
-    if (!root.parent) { geometry.dispose(); return; }
-    root.children.filter(c => c.userData.placeholder).forEach(c => { c.geometry.dispose(); c.material.dispose(); root.remove(c); });
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: root.userData.baseColor, roughness: .62, metalness: .18 }));
-    mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.body = true; mesh.userData.stl = true;
-    root.add(mesh);
-    fitStlMesh(mesh, root);
-    root.userData.modelLoading = false;
-    applyStatusAppearance(root);
-    refreshLabel(root);
-    setStatus(`STL загружен: ${root.userData.name}`);
-  }, undefined, err => {
-    console.error(err);
-    root.userData.modelLoading = false;
-    setStatus(`Ошибка STL: ${root.userData.name}`);
-  });
-}
-
-function applyStatusAppearance(root) {
-  if (root.userData.kind !== 'equipment') return;
-  const status = root.userData.params?.состояние || 'Работает';
-  const color = STATUS_COLORS[status] || root.userData.baseColor;
-  root.traverse(child => {
-    if (child.isMesh && child.userData.body && child.material?.color) child.material.color.set(color || root.userData.baseColor);
-  });
-}
-
-function addEquipment(type, position = new THREE.Vector3(), data = null) {
-  const root = new THREE.Group();
-  root.position.set(snap(position.x), 0, snap(position.z));
-  root.rotation.y = data?.rotationY ?? 0;
-  root.userData = {
-    sceneObject: true, kind: 'equipment', uuid: data?.uuid ?? uid('eq'),
-    typeId: data?.typeId ?? type.id, name: data?.name ?? type.name,
-    width: data?.width ?? type.width, depth: data?.depth ?? type.depth, height: data?.height ?? type.height,
-    baseColor: data?.baseColor ?? data?.color ?? type.color, color: data?.color ?? type.color,
-    params: structuredClone(data?.params ?? type.default_params ?? {}),
-    modelUrl: data?.modelUrl ?? type.model_url ?? null,
-    modelFilename: data?.modelFilename ?? type.model_filename ?? null,
-    modelUnit: data?.modelUnit ?? type.model_unit ?? 'mm',
-  };
-  if (!root.userData.params.состояние) root.userData.params.состояние = 'Работает';
-  makePlaceholder(root); refreshLabel(root); scene.add(root); objects.push(root);
-  applyStatusAppearance(root); selectObject(root); refreshSceneTree(); loadStlIntoEquipment(root);
-  return root;
-}
-
-function addWall(start, end, data = null) {
-  const sx = data?.start?.x ?? snap(start.x), sz = data?.start?.z ?? snap(start.z);
-  const ex = data?.end?.x ?? snap(end.x), ez = data?.end?.z ?? snap(end.z);
-  const dx = ex - sx, dz = ez - sz, length = Math.hypot(dx, dz);
-  if (length < GRID_STEP) return null;
-  const height = data?.height ?? 3, thickness = data?.thickness ?? .18;
-  const root = new THREE.Group();
-  root.position.set((sx + ex) / 2, 0, (sz + ez) / 2); root.rotation.y = -Math.atan2(dz, dx);
-  root.userData = { sceneObject: true, kind: 'wall', uuid: data?.uuid ?? uid('wall'), name: data?.name ?? 'Стена', start: {x:sx,z:sz}, end:{x:ex,z:ez}, height, thickness };
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(length, height, thickness), new THREE.MeshStandardMaterial({ color: 0xc7ccd1, roughness: .92 }));
-  mesh.position.y = height / 2; mesh.castShadow = true; mesh.receiveShadow = true; root.add(mesh);
-  scene.add(root); objects.push(root); selectObject(root); refreshSceneTree(); return root;
-}
-
-function addDoor(position, data = null) {
-  const width = data?.width ?? 1.2, height = data?.height ?? 2.1, depth = data?.depth ?? .12;
-  const root = new THREE.Group(); root.position.set(snap(position.x), 0, snap(position.z)); root.rotation.y = data?.rotationY ?? 0;
-  root.userData = { sceneObject:true, kind:'door', uuid:data?.uuid ?? uid('door'), name:data?.name ?? 'Дверь', width,height,depth };
-  const panel = new THREE.Mesh(new THREE.BoxGeometry(width,height,depth), new THREE.MeshStandardMaterial({color:0xc6905d,transparent:true,opacity:.86}));
-  panel.position.y = height/2; panel.castShadow=true; root.add(panel); root.add(new THREE.BoxHelper(panel,0x4c372a));
-  scene.add(root); objects.push(root); selectObject(root); refreshSceneTree(); return root;
-}
-
-function setHighlight(obj, enabled) {
-  obj.traverse(child => {
-    if (child.isMesh && child.material?.emissive) {
-      child.material.emissive.set(enabled ? 0x1c4e80 : 0x000000);
-      child.material.emissiveIntensity = enabled ? .23 : 0;
-    }
-  });
-}
-
-function selectObject(obj) {
-  if (selected === obj) return;
-  if (selected) setHighlight(selected, false);
-  selected = obj;
-  if (selected) setHighlight(selected, true);
-  renderProperties(); refreshSceneTree();
-  const badge = document.getElementById('selectionBadge');
-  if (selected) { badge.textContent = selected.userData.name || selected.userData.kind; badge.classList.remove('d-none'); }
-  else badge.classList.add('d-none');
-}
-
-function disposeObject(obj) {
-  obj.traverse(child => { child.geometry?.dispose?.(); if (child.material) { child.material.map?.dispose?.(); child.material.dispose?.(); } });
-}
-function removeSelected() {
-  if (!selected) return;
-  const victim = selected; selected = null; scene.remove(victim); objects = objects.filter(o => o !== victim); disposeObject(victim); renderProperties(); refreshSceneTree();
-}
-
-function rebuildEquipmentGeometry(obj) {
-  const stl = obj.children.find(c => c.userData.stl);
-  if (stl) fitStlMesh(stl, obj);
-  const placeholder = obj.children.find(c => c.userData.placeholder);
-  if (placeholder) {
-    placeholder.geometry.dispose(); placeholder.geometry = new THREE.BoxGeometry(obj.userData.width,obj.userData.height,obj.userData.depth); placeholder.position.y=obj.userData.height/2;
-  }
-  refreshLabel(obj);
-}
-
-function paramsHtml(params) {
-  return Object.entries(params || {}).filter(([k]) => k !== 'состояние').map(([k,v]) => `<div class="param-row"><input class="form-control form-control-sm param-key" value="${escapeAttr(k)}"><input class="form-control form-control-sm param-value" value="${escapeAttr(String(v ?? ''))}"></div>`).join('');
-}
-
-function renderProperties() {
-  const panel = document.getElementById('propertiesPanel');
-  if (!selected) { panel.innerHTML = '<span class="text-secondary">Выберите объект на сцене.</span>'; return; }
-  const d = selected.userData;
-  let html = `<div class="mb-2"><div class="property-label">Тип</div><strong>${escapeHtml(kindTitle(d.kind))}</strong></div>
-    <div class="mb-2"><label class="property-label">Название</label><input id="propName" class="form-control form-control-sm" value="${escapeAttr(d.name || '')}"></div>
-    <div class="row g-1"><div class="col-6"><label class="property-label">X, м</label><input id="propX" type="number" step="0.5" class="form-control form-control-sm" value="${selected.position.x.toFixed(2)}"></div><div class="col-6"><label class="property-label">Z, м</label><input id="propZ" type="number" step="0.5" class="form-control form-control-sm" value="${selected.position.z.toFixed(2)}"></div></div>
-    <div class="mt-1"><label class="property-label">Поворот, °</label><input id="propRotation" type="number" step="5" class="form-control form-control-sm" value="${THREE.MathUtils.radToDeg(selected.rotation.y).toFixed(0)}"></div>`;
-  if (d.kind === 'equipment') {
-    const options = Object.keys(STATUS_COLORS).map(s => `<option ${s === (d.params?.состояние || 'Работает') ? 'selected' : ''}>${s}</option>`).join('');
-    html += `<div class="property-section"><label class="property-label">Состояние</label><select id="propStatus" class="form-select form-select-sm">${options}</select></div>
-      ${d.modelUrl ? `<div class="property-section"><div class="small"><strong>STL:</strong> ${escapeHtml(d.modelFilename || '3D-модель')}<br><span class="text-secondary">Исходные единицы: ${escapeHtml(d.modelUnit)}</span></div></div>` : ''}
-      <div class="property-section"><div class="row g-1"><div class="col"><label class="property-label">X</label><input id="propWidth" type="number" step=".001" min=".001" class="form-control form-control-sm" value="${d.width}"></div><div class="col"><label class="property-label">Z</label><input id="propDepth" type="number" step=".001" min=".001" class="form-control form-control-sm" value="${d.depth}"></div><div class="col"><label class="property-label">Y</label><input id="propHeight" type="number" step=".001" min=".001" class="form-control form-control-sm" value="${d.height}"></div></div></div>
-      <div class="property-section"><strong>Паспорт и параметры</strong><div id="paramsEditor" class="mt-2">${paramsHtml(d.params)}</div><button id="addParamBtn" class="btn btn-sm btn-outline-secondary w-100 mt-1">+ параметр</button></div>`;
-  }
-  panel.innerHTML = html; bindPropertyEvents();
-}
-
-function collectParams() {
-  if (!selected || selected.userData.kind !== 'equipment') return;
-  const state = selected.userData.params?.состояние || 'Работает';
-  const params = { состояние: state };
-  document.querySelectorAll('.param-row').forEach(row => {
-    const key = row.querySelector('.param-key').value.trim(), value = row.querySelector('.param-value').value;
-    if (key && key !== 'состояние') params[key] = value;
-  });
-  selected.userData.params = params;
-}
-
-function bindPropertyEvents() {
-  if (!selected) return;
-  const byId = id => document.getElementById(id);
-  byId('propName')?.addEventListener('input', e => { selected.userData.name=e.target.value; refreshLabel(selected); refreshSceneTree(); });
-  const applyTransform = () => { selected.position.x=snap(parseFloat(byId('propX').value)||0); selected.position.z=snap(parseFloat(byId('propZ').value)||0); selected.rotation.y=THREE.MathUtils.degToRad(parseFloat(byId('propRotation').value)||0); };
-  ['propX','propZ','propRotation'].forEach(id => byId(id)?.addEventListener('change',applyTransform));
-  if (selected.userData.kind === 'equipment') {
-    byId('propStatus')?.addEventListener('change', e => { collectParams(); selected.userData.params.состояние=e.target.value; applyStatusAppearance(selected); refreshSceneTree(); });
-    const rebuild = () => { selected.userData.width=Math.max(.001,parseFloat(byId('propWidth').value)||1); selected.userData.depth=Math.max(.001,parseFloat(byId('propDepth').value)||1); selected.userData.height=Math.max(.001,parseFloat(byId('propHeight').value)||1); rebuildEquipmentGeometry(selected); };
-    ['propWidth','propDepth','propHeight'].forEach(id => byId(id)?.addEventListener('change',rebuild));
-    document.querySelectorAll('.param-key,.param-value').forEach(el => el.addEventListener('change',collectParams));
-    byId('addParamBtn')?.addEventListener('click',()=>{ collectParams(); selected.userData.params[`параметр_${Object.keys(selected.userData.params).length}`]=''; renderProperties(); });
-  }
-}
-
-function refreshSceneTree() {
-  const el = document.getElementById('sceneTree');
-  if (!objects.length) { el.innerHTML='<div class="small text-secondary">План пока пуст.</div>'; return; }
-  el.innerHTML = objects.map(o => {
-    const status = o.userData.kind === 'equipment' ? ` · ${escapeHtml(o.userData.params?.состояние || 'Работает')}` : '';
-    return `<div class="scene-item ${o===selected?'active':''}" data-uuid="${o.userData.uuid}"><div><strong>${escapeHtml(o.userData.name||kindTitle(o.userData.kind))}</strong><div class="equipment-meta">${kindTitle(o.userData.kind)}${status}</div></div></div>`;
-  }).join('');
-  el.querySelectorAll('.scene-item').forEach(item=>item.addEventListener('click',()=>selectObject(objects.find(o=>o.userData.uuid===item.dataset.uuid)||null)));
-}
-
-function renderEquipmentTree(filter='') {
-  const target=document.getElementById('equipmentTree'), normalized=filter.trim().toLowerCase();
-  const filtered=equipmentTypes.filter(x=>!normalized||`${x.name} ${x.category} ${JSON.stringify(x.default_params)}`.toLowerCase().includes(normalized));
-  const groups={}; filtered.forEach(x=>(groups[x.category||'Прочее'] ||= []).push(x));
-  target.innerHTML=Object.entries(groups).map(([category,items])=>`<div class="equipment-category"><div class="equipment-category-title">${escapeHtml(category)}</div>${items.map(item=>`<div class="equipment-item" draggable="true" data-type-id="${item.id}"><span class="equipment-swatch" style="background:${item.color}"></span><div><strong>${escapeHtml(item.name)}</strong>${item.model_url?'<span class="badge text-bg-dark ms-1">STL</span>':''}<div class="equipment-meta">${item.width}×${item.depth}×${item.height} м</div></div></div>`).join('')}</div>`).join('')||'<div class="small text-secondary">Ничего не найдено.</div>';
-  target.querySelectorAll('.equipment-item').forEach(item=>{
-    item.addEventListener('click',()=>{ const type=equipmentTypes.find(t=>t.id===Number(item.dataset.typeId)); addEquipment(type,controls.target.clone()); });
-    item.addEventListener('dragstart',e=>e.dataTransfer.setData('text/equipment-type',item.dataset.typeId));
-  });
-}
-
-function setTool(tool) {
-  activeTool=tool; wallStart=null;
-  document.querySelectorAll('.tool-btn').forEach(btn=>{ const active=btn.dataset.tool===tool; btn.classList.toggle('active',active); btn.classList.toggle('btn-outline-primary',active); btn.classList.toggle('btn-outline-secondary',!active); });
-  setStatus(tool==='wall'?'Стена: укажите первую точку':tool==='door'?'Дверь: укажите точку':'Режим выбора');
-}
-
-renderer.domElement.addEventListener('pointerdown',event=>{
-  if(event.button!==0)return;
-  if(activeTool==='wall'){const p=pointerOnFloor(event);if(!p)return;if(!wallStart){wallStart=p.clone();setStatus('Стена: укажите вторую точку');}else{addWall(wallStart,p);wallStart=p.clone();setStatus('Стена добавлена. Следующая точка продолжит стену');}return;}
-  if(activeTool==='door'){const p=pointerOnFloor(event);if(p)addDoor(p);setTool('select');return;}
-  if(activeTool!=='select')return;
-  const hit=pickObject(event);selectObject(hit);if(hit){const p=pointerOnFloor(event);if(p){dragging=true;dragOffset.copy(hit.position).sub(p);controls.enabled=false;renderer.domElement.setPointerCapture?.(event.pointerId);}}
-});
-renderer.domElement.addEventListener('pointermove',event=>{if(!dragging||!selected||activeTool!=='select')return;const p=pointerOnFloor(event);if(!p)return;selected.position.x=snap(p.x+dragOffset.x);selected.position.z=snap(p.z+dragOffset.z);const px=document.getElementById('propX'),pz=document.getElementById('propZ');if(px)px.value=selected.position.x.toFixed(2);if(pz)pz.value=selected.position.z.toFixed(2);});
-window.addEventListener('pointerup',()=>{dragging=false;controls.enabled=true;});
-viewport.addEventListener('dragover',e=>e.preventDefault());
-viewport.addEventListener('drop',e=>{e.preventDefault();const type=equipmentTypes.find(t=>t.id===Number(e.dataTransfer.getData('text/equipment-type'))),p=pointerOnFloor(e);if(type&&p)addEquipment(type,p);});
-
-function serializeScene(){collectParams();return{version:2,gridStep:GRID_STEP,camera:{position:camera.position.toArray(),target:controls.target.toArray()},objects:objects.map(o=>{const d=o.userData;if(d.kind==='equipment')return{kind:d.kind,uuid:d.uuid,typeId:d.typeId,name:d.name,position:{x:o.position.x,z:o.position.z},rotationY:o.rotation.y,width:d.width,depth:d.depth,height:d.height,color:d.color,baseColor:d.baseColor,params:d.params,modelUrl:d.modelUrl,modelFilename:d.modelFilename,modelUnit:d.modelUnit};if(d.kind==='wall')return{kind:d.kind,uuid:d.uuid,name:d.name,start:d.start,end:d.end,height:d.height,thickness:d.thickness};return{kind:d.kind,uuid:d.uuid,name:d.name,position:{x:o.position.x,z:o.position.z},rotationY:o.rotation.y,width:d.width,height:d.height,depth:d.depth};})};}
-function clearSceneObjects(){selectObject(null);[...objects].forEach(o=>{scene.remove(o);disposeObject(o);});objects=[];refreshSceneTree();}
-function loadScene(data){clearSceneObjects();for(const item of data?.objects||[]){if(item.kind==='equipment'){const type=equipmentTypes.find(t=>t.id===item.typeId)||{id:item.typeId,name:item.name,width:item.width,depth:item.depth,height:item.height,color:item.color||'#4472c4',default_params:item.params||{},model_url:item.modelUrl,model_filename:item.modelFilename,model_unit:item.modelUnit};addEquipment(type,new THREE.Vector3(item.position?.x||0,0,item.position?.z||0),item);}else if(item.kind==='wall')addWall(new THREE.Vector3(item.start.x,0,item.start.z),new THREE.Vector3(item.end.x,0,item.end.z),item);else if(item.kind==='door')addDoor(new THREE.Vector3(item.position?.x||0,0,item.position?.z||0),item);}if(data?.camera?.position)camera.position.fromArray(data.camera.position);if(data?.camera?.target)controls.target.fromArray(data.camera.target);controls.update();selectObject(null);}
-
-async function saveLayout(){const name=document.getElementById('layoutName').value.trim()||'Основной цех';setStatus('Сохранение...');const res=await fetch('/api/layouts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,data:serializeScene()})});if(!res.ok)throw new Error('Не удалось сохранить планировку');setStatus('Сохранено');await refreshLayouts();}
-async function refreshLayouts(){const list=await fetch('/api/layouts').then(r=>r.json()),el=document.getElementById('layoutsList');el.innerHTML=list.length?list.map(layout=>`<div class="list-group-item d-flex align-items-center gap-2"><div class="flex-grow-1"><strong>${escapeHtml(layout.name)}</strong><div class="small text-secondary">${layout.updated_at?new Date(layout.updated_at).toLocaleString():''}</div></div><button class="btn btn-sm btn-primary load-layout" data-id="${layout.id}">Открыть</button><button class="btn btn-sm btn-outline-danger delete-layout" data-id="${layout.id}">Удалить</button></div>`).join(''):'<div class="text-secondary">Сохранённых планировок пока нет.</div>';el.querySelectorAll('.load-layout').forEach(btn=>btn.addEventListener('click',async()=>{const layout=await fetch(`/api/layouts/${btn.dataset.id}`).then(r=>r.json());document.getElementById('layoutName').value=layout.name;loadScene(layout.data);bootstrap.Modal.getOrCreateInstance(document.getElementById('layoutsModal')).hide();setStatus(`Открыта планировка «${layout.name}»`);}));el.querySelectorAll('.delete-layout').forEach(btn=>btn.addEventListener('click',async()=>{await fetch(`/api/layouts/${btn.dataset.id}`,{method:'DELETE'});refreshLayouts();}));}
-
-function resize(){const width=viewport.clientWidth,height=viewport.clientHeight;renderer.setSize(width,height,false);camera.aspect=width/Math.max(height,1);camera.updateProjectionMatrix();}
-new ResizeObserver(resize).observe(viewport);resize();
-(function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera);})();
-
-document.querySelectorAll('.tool-btn').forEach(btn=>btn.addEventListener('click',()=>setTool(btn.dataset.tool)));
-document.getElementById('deleteBtn').addEventListener('click',removeSelected);
-document.getElementById('equipmentSearch').addEventListener('input',e=>renderEquipmentTree(e.target.value));
-document.getElementById('saveBtn').addEventListener('click',()=>saveLayout().catch(err=>setStatus(err.message)));
-document.getElementById('loadBtn').addEventListener('click',refreshLayouts);
-document.getElementById('topViewBtn').addEventListener('click',()=>{camera.position.set(0,38,.01);controls.target.set(0,0,0);controls.update();});
-document.getElementById('isoViewBtn').addEventListener('click',()=>{camera.position.set(18,18,18);controls.target.set(0,0,0);controls.update();});
-
-document.getElementById('equipmentForm').addEventListener('submit',async e=>{
-  e.preventDefault(); const fd=new FormData(e.target), stl=fd.get('stl'); let res;
-  setStatus(stl&&stl.size?'Загрузка STL...':'Добавление оборудования...');
-  if(stl&&stl.size){res=await fetch('/api/equipment-types/import-stl',{method:'POST',body:fd});}
-  else{const payload={name:fd.get('name'),category:fd.get('category'),width:Number(fd.get('width')),depth:Number(fd.get('depth')),height:Number(fd.get('height')),color:fd.get('color'),model_unit:fd.get('model_unit'),default_params:{}};res=await fetch('/api/equipment-types',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});}
-  const created=await res.json(); if(!res.ok){setStatus(created.error||'Ошибка добавления');return;}
-  equipmentTypes.push(created); renderEquipmentTree(); e.target.reset(); e.target.querySelector('[name=category]').value='Металлообработка / Токарные'; e.target.querySelector('[name=color]').value='#4472c4';
-  bootstrap.Modal.getOrCreateInstance(document.getElementById('equipmentModal')).hide(); setStatus(created.model_url?'STL импортирован в базу':'Оборудование добавлено');
-});
-
-window.addEventListener('keydown',e=>{if((e.key==='Delete'||e.key==='Backspace')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))removeSelected();if(e.key==='Escape'){wallStart=null;setTool('select');}if(e.key.toLowerCase()==='r'&&selected){selected.rotation.y+=Math.PI/2;renderProperties();}});
-
+document.querySelectorAll('.tool-btn').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));document.getElementById('deleteBtn').addEventListener('click',removeSelected);document.getElementById('equipmentSearch').addEventListener('input',e=>renderEquipmentTree(e.target.value));document.getElementById('saveBtn').addEventListener('click',()=>saveLayout().catch(e=>setStatus(e.message)));document.getElementById('loadBtn').addEventListener('click',refreshLayouts);document.getElementById('topViewBtn').addEventListener('click',()=>{camera.position.set(0,38,.01);controls.target.set(0,0,0);controls.update();});document.getElementById('isoViewBtn').addEventListener('click',()=>{camera.position.set(18,18,18);controls.target.set(0,0,0);controls.update();});
+document.getElementById('equipmentForm').addEventListener('submit',async e=>{e.preventDefault();const fd=new FormData(e.target),file=fd.get('stl');let r;if(file&&file.size)r=await fetch('/api/equipment-types/import-stl',{method:'POST',body:fd});else{const p={name:fd.get('name'),category:fd.get('category'),width:Number(fd.get('width')),depth:Number(fd.get('depth')),height:Number(fd.get('height')),color:fd.get('color'),model_unit:fd.get('model_unit')};r=await fetch('/api/equipment-types',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});}const created=await r.json();if(!r.ok){setStatus(created.error||'Ошибка добавления');return;}equipmentTypes.push(created);renderEquipmentTree();e.target.reset();bootstrap.Modal.getOrCreateInstance(document.getElementById('equipmentModal')).hide();setStatus('Оборудование добавлено');});
+window.addEventListener('keydown',e=>{if((e.key==='Delete'||e.key==='Backspace')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))removeSelected();if(e.key==='Escape')setTool('select');if(e.key.toLowerCase()==='r'&&selected){selected.rotation.y+=Math.PI/2;renderProperties();}});
 (async function init(){equipmentTypes=await fetch('/api/equipment-types').then(r=>r.json());renderEquipmentTree();refreshSceneTree();refreshLayouts();})();
