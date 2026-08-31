@@ -7,3 +7,4 @@ factory.db
 instance/
 .vscode/
 .idea/
+static/uploads/models/*.stl
