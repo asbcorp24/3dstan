@@ -30,26 +30,22 @@
       </div>
 
       <div class="panel-title border-top">Свойства объекта</div>
-      <div id="propertiesPanel" class="p-2 small text-secondary">
-        Выберите объект на сцене.
-      </div>
+      <div id="propertiesPanel" class="p-2 small text-secondary">Выберите объект на сцене.</div>
     </aside>
 
     <section id="viewportWrap" class="viewport-wrap">
       <canvas id="threeCanvas"></canvas>
-      <div class="viewport-help">
-        ЛКМ — выбор · перетаскивание — перемещение · колесо — масштаб · ПКМ — вращение камеры
-      </div>
+      <div class="viewport-help">ЛКМ — выбор · перетаскивание — перемещение · колесо — масштаб · ПКМ — вращение · R — 90°</div>
       <div id="selectionBadge" class="selection-badge d-none"></div>
     </section>
 
     <aside class="right-panel panel">
       <div class="panel-title d-flex align-items-center justify-content-between">
         <span>База оборудования</span>
-        <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#equipmentModal">+</button>
+        <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#equipmentModal">+ Добавить</button>
       </div>
       <div class="p-2">
-        <input id="equipmentSearch" class="form-control form-control-sm mb-2" placeholder="Поиск станка...">
+        <input id="equipmentSearch" class="form-control form-control-sm mb-2" placeholder="Поиск станка, модели, категории...">
         <div id="equipmentTree" class="equipment-tree"></div>
       </div>
       <div class="panel-title border-top">Объекты на плане</div>
@@ -68,19 +64,42 @@
 </div>
 
 <div class="modal fade" id="equipmentModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form id="equipmentForm">
-        <div class="modal-header"><h5 class="modal-title">Новое оборудование</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-header">
+          <div><h5 class="modal-title">Добавить оборудование</h5><div class="small text-secondary">Можно создать обычный объект или импортировать реальную 3D-модель станка из STL.</div></div>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
         <div class="modal-body">
-          <div class="mb-2"><label class="form-label">Название</label><input name="name" class="form-control" required></div>
-          <div class="mb-2"><label class="form-label">Категория</label><input name="category" class="form-control" value="Прочее"></div>
-          <div class="row g-2">
-            <div class="col"><label class="form-label">Ширина, м</label><input name="width" type="number" step="0.1" class="form-control" value="1"></div>
-            <div class="col"><label class="form-label">Глубина, м</label><input name="depth" type="number" step="0.1" class="form-control" value="1"></div>
-            <div class="col"><label class="form-label">Высота, м</label><input name="height" type="number" step="0.1" class="form-control" value="1"></div>
+          <div class="row g-3">
+            <div class="col-md-7">
+              <div class="mb-2"><label class="form-label">Название</label><input name="name" class="form-control" required placeholder="Например: Токарный станок 16К20 №1"></div>
+              <div class="mb-2"><label class="form-label">Категория / группа</label><input name="category" class="form-control" value="Металлообработка / Токарные" placeholder="Раздел / Подраздел"></div>
+              <div class="row g-2">
+                <div class="col"><label class="form-label">Ширина X, м</label><input name="width" type="number" step="0.001" min="0.001" class="form-control" value="1"></div>
+                <div class="col"><label class="form-label">Глубина Z, м</label><input name="depth" type="number" step="0.001" min="0.001" class="form-control" value="1"></div>
+                <div class="col"><label class="form-label">Высота Y, м</label><input name="height" type="number" step="0.001" min="0.001" class="form-control" value="1"></div>
+              </div>
+              <div class="mt-2"><label class="form-label">Базовый цвет</label><input name="color" type="color" class="form-control form-control-color" value="#4472c4"></div>
+            </div>
+            <div class="col-md-5">
+              <div class="border rounded p-3 h-100 bg-light">
+                <label class="form-label fw-semibold">3D-модель STL</label>
+                <input id="stlFile" name="stl" type="file" accept=".stl,model/stl" class="form-control">
+                <div class="form-text">ASCII и Binary STL. Максимум 100 МБ. Файл будет храниться на сервере и использоваться при каждом открытии планировки.</div>
+                <label class="form-label mt-3">Единицы исходного STL</label>
+                <select name="model_unit" class="form-select">
+                  <option value="mm" selected>миллиметры (мм)</option>
+                  <option value="cm">сантиметры (см)</option>
+                  <option value="m">метры (м)</option>
+                </select>
+                <div class="form-text">Габариты выше задают фактический размер модели на плане; это защищает от ошибок масштаба CAD.</div>
+              </div>
+            </div>
           </div>
-          <div class="mt-2"><label class="form-label">Цвет</label><input name="color" type="color" class="form-control form-control-color" value="#4472c4"></div>
+          <hr>
+          <div class="small text-secondary">После добавления у каждого экземпляра станка доступны паспортные данные: модель, изготовитель, заводской и инвентарный номера, масса, питание, цех/участок, ответственный, ТО и текущее состояние.</div>
         </div>
         <div class="modal-footer"><button class="btn btn-primary" type="submit">Добавить в базу</button></div>
       </form>
